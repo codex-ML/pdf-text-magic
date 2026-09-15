@@ -53,11 +53,11 @@ export async function loadDocument(file: File): Promise<DocState> {
       const it = raw as any;
       if (typeof it.str !== "string" || !it.str.trim()) continue;
       const t = it.transform as number[];
-      const size = Math.hypot(t[2], t[3]) || Math.hypot(t[0], t[1]) || 12;
+      const size = Math.hypot(t[2]!, t[3]!) || Math.hypot(t[0]!, t[1]!) || 12;
       items.push({
         str: it.str,
-        x: t[4],
-        y: t[5],
+        x: t[4]!,
+        y: t[5]!,
         width: it.width ?? 0,
         size,
         font: it.fontName ?? "",
@@ -68,12 +68,12 @@ export async function loadDocument(file: File): Promise<DocState> {
     let line: Item[] = [];
     const flush = () => {
       if (!line.length) return;
-      const first = line[0];
-      const last = line[line.length - 1];
+      const first = line[0]!;
+      const last = line[line.length - 1]!;
       const text = line
         .map((it, idx) => {
           if (idx === 0) return it.str;
-          const prev = line[idx - 1];
+          const prev = line[idx - 1]!;
           const gap = it.x - (prev.x + prev.width);
           return (gap > prev.size * 0.2 && !/\s$/.test(prev.str) ? " " : "") + it.str;
         })
@@ -104,7 +104,7 @@ export async function loadDocument(file: File): Promise<DocState> {
         line.push(it);
         continue;
       }
-      const prev = line[line.length - 1];
+      const prev = line[line.length - 1]!;
       const sameLine = Math.abs(prev.y - it.y) < Math.max(1.5, prev.size * 0.3);
       const gap = it.x - (prev.x + prev.width);
       if (sameLine && gap < prev.size * 1.2 && gap > -prev.size) line.push(it);
