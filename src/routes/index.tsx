@@ -1,24 +1,43 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { ClientOnly } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+const PdfEditor = lazy(() => import("@/components/editor/PdfEditor"));
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Inkline — Real-text PDF Editor in Your Browser" },
+      {
+        name: "description",
+        content:
+          "Edit existing PDF text in place, add images, signatures and shapes, and reorder pages. Files never leave your device.",
+      },
+      { property: "og:title", content: "Inkline — Real-text PDF Editor" },
+      {
+        property: "og:description",
+        content:
+          "Retype paragraphs directly inside a PDF, sign, annotate and rearrange pages — fully offline in your browser.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <ClientOnly fallback={<div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading editor…</div>}>
+      <Suspense
+        fallback={
+          <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+            Loading editor…
+          </div>
+        }
+      >
+        <PdfEditor />
+      </Suspense>
+    </ClientOnly>
   );
 }
