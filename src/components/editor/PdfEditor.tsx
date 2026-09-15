@@ -157,7 +157,7 @@ export default function PdfEditor() {
       <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-2.5">
         <span className="font-display text-xl tracking-tight text-foreground">Inkline</span>
         <span className="hidden text-xs text-muted-foreground sm:inline">
-          真 real-text PDF editing, entirely in your browser
+          Real-text PDF editing, entirely in your browser
         </span>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
