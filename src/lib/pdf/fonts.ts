@@ -63,9 +63,10 @@ export function resolveFontStrict(rawName: string, fontFamily?: string): FontKey
   const bold = /bold|black|heavy|semibold|[-_,]bd\b/.test(hay);
   const italic = /italic|oblique|[-_,]it\b/.test(hay);
 
-  const isTimes = /times|timesnewroman|nimbusroman|liberationserif|tinos|serif\b/.test(hay);
   const isCourier = /courier|mono|nimbusmono|liberationmono|cousine/.test(hay);
   const isHelv = /helvetica|arial|nimbussan|liberationsans|arimo|sans-?serif/.test(hay);
+  const isTimes =
+    !isHelv && /times|timesnewroman|nimbusroman|liberationserif|tinos|georgia|(^|[^-])serif/.test(hay);
 
   if (isCourier) {
     if (bold && italic) return "Courier-BoldOblique";
@@ -73,17 +74,17 @@ export function resolveFontStrict(rawName: string, fontFamily?: string): FontKey
     if (italic) return "Courier-Oblique";
     return "Courier";
   }
-  if (isTimes) {
-    if (bold && italic) return "Times-BoldItalic";
-    if (bold) return "Times-Bold";
-    if (italic) return "Times-Italic";
-    return "Times-Roman";
-  }
   if (isHelv) {
     if (bold && italic) return "Helvetica-BoldOblique";
     if (bold) return "Helvetica-Bold";
     if (italic) return "Helvetica-Oblique";
     return "Helvetica";
+  }
+  if (isTimes) {
+    if (bold && italic) return "Times-BoldItalic";
+    if (bold) return "Times-Bold";
+    if (italic) return "Times-Italic";
+    return "Times-Roman";
   }
   return null;
 }
