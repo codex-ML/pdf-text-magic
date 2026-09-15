@@ -73,6 +73,7 @@ export function PageCanvas({
   const startDraw = (e: React.PointerEvent) => {
     if (tool === "select") return;
     if ((e.target as HTMLElement).dataset["handle"]) return;
+    e.preventDefault();
     const p = toPage(e);
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -262,6 +263,7 @@ export function PageCanvas({
                 onPointerDown={(e) => {
                   if (tool !== "select") return;
                   e.stopPropagation();
+                  e.preventDefault();
                   onSelect(b.id, "block");
                   if (b.editable) setEditingId(b.id);
                 }}
