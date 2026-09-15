@@ -28,7 +28,7 @@ export function PagesRail({ pages, current, onGo, onChange }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          title="Insert blank page"
+          title="Insert a copy of the current page"
           onClick={() => {
             const ref = pages[current] ?? pages[0];
             if (!ref) return;
