@@ -142,6 +142,18 @@ export async function renderPageToCanvas(
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
   const ctx = canvas.getContext("2d")!;
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  await doc.destroy?.();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const holder = canvas as any;
+  holder.__pdfTask?.cancel?.();
+  const task = page.render({ canvasContext: ctx, viewport });
+  holder.__pdfTask = task;
+  try {
+    await task.promise;
+  } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((err as any)?.name !== "RenderingCancelledException") throw err;
+  } finally {
+    if (holder.__pdfTask === task) holder.__pdfTask = null;
+    await doc.destroy?.();
+  }
 }
