@@ -53,7 +53,7 @@ export function PageCanvas({
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderPageToCanvas(doc.bytes, page.sourceIndex, scale, canvas, 0).catch(() => {});
+    renderPageToCanvas(doc.bytes, page.sourceIndex, scale, canvas, 0).catch((e) => console.error("render failed", e));
     return () => {
       cancelled = true;
       void cancelled;
