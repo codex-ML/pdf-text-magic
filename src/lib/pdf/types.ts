@@ -12,21 +12,46 @@ export type FontKey =
   | "Courier-Oblique"
   | "Courier-BoldOblique";
 
+/** A font program lifted straight out of the source PDF. */
+export interface EmbeddedFont {
+  /** pdf.js loaded name, unique per document. */
+  ref: string;
+  /** Human readable name from the file. */
+  name: string;
+  /** Raw (sanitised) font program bytes, ready for re-embedding. */
+  data: Uint8Array;
+  /** CSS family registered in document.fonts for pixel-true preview. */
+  cssFamily: string;
+  /** Code points the font can actually draw. */
+  charset: Set<number>;
+  ascent: number;
+  descent: number;
+}
+
 /** A line of text extracted from the original PDF. */
 export interface TextBlock {
   id: string;
   pageIndex: number;
-  /** PDF user-space coords, origin bottom-left. */
+  /** PDF user-space coords of the line start, origin bottom-left. */
   x: number;
   baseline: number;
   width: number;
   size: number;
+  /** Baseline angle in degrees, counter-clockwise (0 = normal horizontal text). */
+  angle: number;
+  /** Extra space between glyphs in the original, in points. */
+  charSpacing: number;
   original: string;
   text: string;
+  /** Key into DocState.fonts when the real font could be lifted from the file. */
+  fontRef: string | null;
+  /** Metric-compatible standard font, used only when there is no embedded font. */
   fontKey: FontKey | null;
+  /** Family to use for on-screen preview. */
+  cssFont: string;
   /** Raw font name reported by the PDF, for the inspector. */
   rawFont: string;
-  /** Strict mode: false when the embedded font cannot be safely reproduced. */
+  /** False only when neither the real font nor a safe substitute is available. */
   editable: boolean;
   color: string;
   edited: boolean;
@@ -79,4 +104,6 @@ export interface DocState {
   pages: PageState[];
   blocks: TextBlock[];
   annotations: Annotation[];
+  /** Font programs extracted from the source file, keyed by ref. */
+  fonts: Record<string, EmbeddedFont>;
 }
