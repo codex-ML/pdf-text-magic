@@ -257,11 +257,13 @@ export function PageCanvas({
                   selected && "ring-1 ring-primary",
                 )}
                 style={{
-                  left: b.x * scale - 1,
+                  left: b.x * scale,
                   top,
-                  minWidth: Math.max(b.width, 6) * scale + 4,
+                  width: Math.max(b.width, 1) * scale,
                   height: lineHeight * scale,
                   background: changed ? "#fff" : "transparent",
+                  transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
+                  transformOrigin: "left top",
                 }}
                 onPointerDown={(e) => {
                   if (tool !== "select") return;
@@ -278,9 +280,10 @@ export function PageCanvas({
                       top: 0,
                       lineHeight: `${lineHeight * scale}px`,
                       fontSize: b.size * scale,
-                      fontFamily: cssFontFor[b.fontKey ?? "Helvetica"],
+                      fontFamily: b.cssFont,
                       fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                       fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                      letterSpacing: `${b.charSpacing * scale}px`,
                       color: b.color,
                     }}
                   >
@@ -300,12 +303,17 @@ export function PageCanvas({
                       if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    className="absolute inset-0 w-full bg-white px-[1px] text-foreground outline-none ring-2 ring-primary"
+                    className="absolute inset-0 w-full border-0 bg-white p-0 text-foreground outline-none ring-2 ring-primary"
                     style={{
+                      height: lineHeight * scale,
                       fontSize: b.size * scale,
-                      fontFamily: cssFontFor[b.fontKey ?? "Helvetica"],
+                      fontFamily: b.cssFont,
                       fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                       fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                      letterSpacing: `${b.charSpacing * scale}px`,
+                      lineHeight: `${lineHeight * scale}px`,
+                      transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
+                      transformOrigin: "left top",
                     }}
                   />
                 )}
