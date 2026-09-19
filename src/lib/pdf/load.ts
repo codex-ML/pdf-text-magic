@@ -128,6 +128,8 @@ export async function loadDocument(file: File): Promise<DocState> {
       angle: number;
       font: string;
       color: string;
+      ascent: number;
+      descent: number;
     };
     const items: Item[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,13 +150,13 @@ export async function loadDocument(file: File): Promise<DocState> {
       const sin = Math.sin(rad);
       const x = t[4]!;
       const y = t[5]!;
+      const style = styles[it.fontName] ?? {};
       const color =
         runColors.length === raws.length
           ? (runColors[k] ?? "#000000")
           : uniqueColors.size === 1
             ? (runColors[0] ?? "#000000")
-            : (runColors[Math.floor((k / Math.max(1, raws.length)) * runColors.length)] ??
-              "#000000");
+            : "#000000";
       items.push({
         str: it.str,
         x,
@@ -166,6 +168,8 @@ export async function loadDocument(file: File): Promise<DocState> {
         angle,
         font: it.fontName ?? "",
         color,
+        ascent: typeof style.ascent === "number" ? style.ascent : 0.9,
+        descent: typeof style.descent === "number" ? style.descent : -0.25,
       });
     }
     items.sort((p, q) => p.angle - q.angle || q.cross - p.cross || p.along - q.along);
@@ -190,10 +194,12 @@ export async function loadDocument(file: File): Promise<DocState> {
       const width = last.along + last.width - first.along;
       // Reproduce the original tracking: how much wider the run is than the
       // glyphs alone, spread over the gaps between characters.
-      const naturalRatio = 0.5; // rough average glyph advance, refined at export
-      const natural = text.length * first.size * naturalRatio;
+      // pdf.js already gives the measured advance for every item. Do not
+      // estimate glyph widths from character count: that breaks small text,
+      // proportional fonts, ligatures, and tightly kerned paragraphs.
+      const natural = line.reduce((sum, item) => sum + Math.max(0, item.width), 0);
       const charSpacing =
-        text.length > 1 && width > 0 ? (width - natural) / (text.length - 1) : 0;
+        text.length > 1 && width > natural ? (width - natural) / (text.length - 1) : 0;
       blocks.push({
         id: uid(),
         pageIndex: i,
@@ -201,6 +207,8 @@ export async function loadDocument(file: File): Promise<DocState> {
         baseline: first.y,
         width,
         size: first.size,
+        ascent: first.ascent,
+        descent: first.descent,
         angle: first.angle,
         charSpacing,
         original: text,

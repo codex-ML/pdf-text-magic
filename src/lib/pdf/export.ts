@@ -33,12 +33,14 @@ export async function buildPdf(state: DocState): Promise<Uint8Array> {
     if (!block.edited && !block.deleted) continue;
     const page = srcPages[block.pageIndex];
     if (!page) continue;
-    const pad = block.size * 0.14;
+    const ascent = block.ascent || 0.9;
+    const descent = block.descent || -0.25;
+    const pad = Math.max(block.size * 0.04, 0.5);
     page.drawRectangle({
       x: block.x - pad,
-      y: block.baseline - block.size * 0.28,
-      width: Math.max(block.width, 1) + pad * 4,
-      height: block.size * 1.25,
+      y: block.baseline + block.size * descent - pad,
+      width: Math.max(block.width, 1) + pad * 2,
+      height: Math.max(block.size * (ascent - descent), block.size) + pad * 2,
       color: rgb(1, 1, 1),
     });
     if (block.deleted || !block.text) continue;

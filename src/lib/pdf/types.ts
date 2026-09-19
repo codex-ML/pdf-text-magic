@@ -41,6 +41,9 @@ export interface TextBlock {
   angle: number;
   /** Extra space between glyphs in the original, in points. */
   charSpacing: number;
+  /** PDF font metrics in normalized em units. */
+  ascent: number;
+  descent: number;
   original: string;
   text: string;
   /** Key into DocState.fonts when the real font could be lifted from the file. */

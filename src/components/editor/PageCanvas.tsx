@@ -241,7 +241,10 @@ export function PageCanvas({
 
           {/* original text lines */}
           {blocks.map((b) => {
-            const top = (page.height - b.baseline - b.size * 0.82) * scale;
+            // Position from the PDF baseline using the font's actual ascent;
+            // fixed factors drift visibly on small paragraph text.
+            const top = (page.height - b.baseline - b.size * b.ascent) * scale;
+            const lineHeight = Math.max(b.size * (b.ascent - b.descent), 1);
             const changed = b.edited || b.deleted;
             const selected = selectedId === b.id;
             return (
@@ -257,7 +260,7 @@ export function PageCanvas({
                   left: b.x * scale - 1,
                   top,
                   minWidth: Math.max(b.width, 6) * scale + 4,
-                  height: b.size * 1.16 * scale,
+                  height: lineHeight * scale,
                   background: changed ? "#fff" : "transparent",
                 }}
                 onPointerDown={(e) => {
@@ -273,7 +276,7 @@ export function PageCanvas({
                     className="pointer-events-none absolute left-[1px] whitespace-pre"
                     style={{
                       top: 0,
-                      lineHeight: `${b.size * 1.16 * scale}px`,
+                      lineHeight: `${lineHeight * scale}px`,
                       fontSize: b.size * scale,
                       fontFamily: cssFontFor[b.fontKey ?? "Helvetica"],
                       fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
