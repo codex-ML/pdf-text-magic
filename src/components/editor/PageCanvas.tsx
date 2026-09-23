@@ -278,9 +278,10 @@ export function PageCanvas({
                       top: 0,
                       lineHeight: `${b.size * 1.16 * scale}px`,
                       fontSize: b.size * scale,
-                      fontFamily: cssFontFor[b.fontKey ?? "Helvetica"],
+                      fontFamily: family,
                       fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                       fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                      letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
                       color: b.color,
                     }}
                   >
@@ -303,9 +304,10 @@ export function PageCanvas({
                     className="absolute inset-0 w-full bg-white px-[1px] text-foreground outline-none ring-2 ring-primary"
                     style={{
                       fontSize: b.size * scale,
-                      fontFamily: cssFontFor[b.fontKey ?? "Helvetica"],
+                      fontFamily: family,
                       fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                       fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                      color: b.color,
                     }}
                   />
                 )}
