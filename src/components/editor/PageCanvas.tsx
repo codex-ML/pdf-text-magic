@@ -244,6 +244,7 @@ export function PageCanvas({
             const top = (page.height - b.baseline - b.size * 0.82) * scale;
             const changed = b.edited || b.deleted;
             const selected = selectedId === b.id;
+            const family = b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"];
             return (
               <div
                 key={b.id}
@@ -259,6 +260,8 @@ export function PageCanvas({
                   minWidth: Math.max(b.width, 6) * scale + 4,
                   height: b.size * 1.16 * scale,
                   background: changed ? "#fff" : "transparent",
+                  transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
+                  transformOrigin: "left bottom",
                 }}
                 onPointerDown={(e) => {
                   if (tool !== "select") return;
