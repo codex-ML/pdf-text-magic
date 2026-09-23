@@ -1,5 +1,6 @@
 import { PDFDocument, degrees, rgb } from "pdf-lib";
-import type { Annotation, DocState, FontKey } from "./types";
+import fontkit from "@pdf-lib/fontkit";
+import type { Annotation, DocState, FontKey, TextBlock } from "./types";
 import { standardFontFor } from "./fonts";
 
 function hexToRgb(hex: string) {
@@ -15,41 +16,84 @@ function hexToRgb(hex: string) {
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
+type EmbeddedPdfFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
+
 export async function buildPdf(state: DocState): Promise<Uint8Array> {
   const src = await PDFDocument.load(state.bytes.slice(), { ignoreEncryption: true });
-  const fontCache = new Map<FontKey, Awaited<ReturnType<typeof src.embedFont>>>();
-  const getFont = async (key: FontKey) => {
-    const hit = fontCache.get(key);
+  src.registerFontkit(fontkit);
+
+  const stdCache = new Map<FontKey, EmbeddedPdfFont>();
+  const getStdFont = async (key: FontKey) => {
+    const hit = stdCache.get(key);
     if (hit) return hit;
     const f = await src.embedFont(standardFontFor[key]);
-    fontCache.set(key, f);
+    stdCache.set(key, f);
     return f;
+  };
+
+  // Re-embed the font programs lifted from the original file, so edited text is
+  // drawn with the exact same glyphs the rest of the line uses.
+  const realCache = new Map<string, EmbeddedPdfFont | null>();
+  const getRealFont = async (ref: string | null) => {
+    if (!ref) return null;
+    if (realCache.has(ref)) return realCache.get(ref) ?? null;
+    const source = state.fonts[ref];
+    let embedded: EmbeddedPdfFont | null = null;
+    if (source?.data?.length) {
+      try {
+        embedded = await src.embedFont(source.data.slice(), { subset: false });
+      } catch {
+        embedded = null;
+      }
+    }
+    realCache.set(ref, embedded);
+    return embedded;
+  };
+
+  /** A font can be re-embedded yet still miss a glyph the user just typed. */
+  const canRender = (font: EmbeddedPdfFont, text: string) => {
+    try {
+      font.widthOfTextAtSize(text, 12);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const srcPages = src.getPages();
 
-  // 1. Replace edited text lines in place.
+  // 1. Replace edited text lines in place, keeping angle, colour and tracking.
   for (const block of state.blocks) {
     if (!block.edited && !block.deleted) continue;
     const page = srcPages[block.pageIndex];
     if (!page) continue;
-    const pad = block.size * 0.14;
+
+    const rad = (block.angle * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const pad = block.size * 0.16;
+    const descent = block.size * 0.26;
+    const boxW = Math.max(block.width, 1) + pad * 3;
+    const boxH = block.size * 1.22;
+
+    // Mask the original glyphs. The rectangle is rotated with the baseline so
+    // sideways text is covered exactly instead of being clipped.
     page.drawRectangle({
-      x: block.x - pad,
-      y: block.baseline - block.size * 0.28,
-      width: Math.max(block.width, 1) + pad * 4,
-      height: block.size * 1.25,
+      x: block.x - pad * cos + descent * sin,
+      y: block.baseline - pad * sin - descent * cos,
+      width: boxW,
+      height: boxH,
+      rotate: degrees(block.angle),
       color: rgb(1, 1, 1),
     });
+
     if (block.deleted || !block.text) continue;
-    const font = await getFont(block.fontKey ?? "Helvetica");
-    page.drawText(block.text, {
-      x: block.x,
-      y: block.baseline,
-      size: block.size,
-      font,
-      color: hexToRgb(block.color),
-    });
+
+    let font: EmbeddedPdfFont | null = await getRealFont(block.fontRef);
+    if (font && !canRender(font, block.text)) font = null;
+    if (!font) font = await getStdFont(block.fontKey ?? "Helvetica");
+
+    drawTrackedText(page, block, font, cos, sin);
   }
 
   // 2. Draw everything added on top.
@@ -58,7 +102,7 @@ export async function buildPdf(state: DocState): Promise<Uint8Array> {
     if (!page) continue;
     const ph = page.getHeight();
     const y = ph - a.y - a.h;
-    await drawAnnotation(page, a, y, getFont);
+    await drawAnnotation(page, a, y, getStdFont);
   }
 
   // 3. Apply page order / rotation / deletions.
@@ -78,11 +122,66 @@ export async function buildPdf(state: DocState): Promise<Uint8Array> {
 
 type AnyPage = ReturnType<PDFDocument["getPages"]>[number];
 
+/**
+ * Draw a replacement line. When the original run was tracked wider or tighter
+ * than the font's natural advance, the characters are placed one by one so the
+ * new text keeps the same density as the surrounding page.
+ */
+function drawTrackedText(
+  page: AnyPage,
+  block: TextBlock,
+  font: EmbeddedPdfFont,
+  cos: number,
+  sin: number,
+) {
+  const color = hexToRgb(block.color);
+  const size = block.size;
+  const text = block.text;
+  const common = { size, font, color, rotate: degrees(block.angle) };
+
+  let natural = 0;
+  try {
+    natural = font.widthOfTextAtSize(text, size);
+  } catch {
+    natural = 0;
+  }
+
+  let spacing = 0;
+  if (natural > 0 && text.length > 1 && block.original.length > 0 && block.width > 0) {
+    const density = block.width / block.original.length;
+    const target = density * text.length;
+    spacing = (target - natural) / (text.length - 1);
+    const limit = size * 0.25;
+    spacing = Math.max(-size * 0.08, Math.min(limit, spacing));
+  }
+
+  if (Math.abs(spacing) < 0.05) {
+    page.drawText(text, { ...common, x: block.x, y: block.baseline });
+    return;
+  }
+
+  let along = 0;
+  for (const ch of text) {
+    page.drawText(ch, {
+      ...common,
+      x: block.x + along * cos,
+      y: block.baseline + along * sin,
+    });
+    let adv = size * 0.5;
+    try {
+      adv = font.widthOfTextAtSize(ch, size);
+    } catch {
+      /* keep the estimate */
+    }
+    along += adv + spacing;
+  }
+}
+
 async function drawAnnotation(
   page: AnyPage,
   a: Annotation,
   y: number,
-  getFont: (k: FontKey) => Promise<Awaited<ReturnType<PDFDocument["embedFont"]>>>,
+  getFont: (k: FontKey) => Promise<EmbeddedPdfFont>,
 ) {
   const stroke = a.strokeWidth ?? 1.5;
   switch (a.kind) {
