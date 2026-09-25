@@ -259,8 +259,10 @@ async function getCachedDoc(bytes: Uint8Array) {
   let p = docCache.get(bytes);
   if (!p) {
     const lib = await getPdfjs();
-    p = lib.getDocument({ data: bytes.slice() }).promise;
-    docCache.set(bytes, p);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const created: Promise<any> = lib.getDocument({ data: bytes.slice() }).promise;
+    docCache.set(bytes, created);
+    p = created;
   }
   return p!;
 }
