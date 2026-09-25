@@ -194,11 +194,14 @@ export async function loadDocument(file: File): Promise<DocState> {
       const natural = text.length * first.size * naturalRatio;
       const charSpacing =
         text.length > 1 && width > 0 ? (width - natural) / (text.length - 1) : 0;
+      const [vx, vy] = viewport.convertToViewportPoint(first.x, first.y) as [number, number];
       blocks.push({
         id: uid(),
         pageIndex: i,
         x: first.x,
         baseline: first.y,
+        viewX: vx,
+        topBaseline: vy,
         width,
         size: first.size,
         angle: first.angle,
