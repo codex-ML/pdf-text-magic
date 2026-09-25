@@ -49,16 +49,27 @@ export function PageCanvas({
   const inkRef = useRef<{ x: number; y: number }[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Blocks whose original glyphs must be physically removed from the canvas.
+  const eraseList = doc.blocks.filter(
+    (b) => b.pageIndex === page.sourceIndex && (b.edited || b.deleted || b.id === editingId),
+  );
+  const eraseKey = eraseList.map((b) => b.id).join(",");
+  const eraseRef = useRef(eraseList);
+  eraseRef.current = eraseList;
+
   useEffect(() => {
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderPageToCanvas(doc.bytes, page.sourceIndex, scale, canvas, 0).catch((e) => console.error("render failed", e));
+    renderPageToCanvas(doc.bytes, page.sourceIndex, scale, canvas, 0)
+      .then(() => {
+        if (!cancelled) eraseCanvasBlocks(canvas, eraseRef.current, page, scale);
+      })
+      .catch((e) => console.error("render failed", e));
     return () => {
       cancelled = true;
-      void cancelled;
     };
-  }, [doc.bytes, page.sourceIndex, scale]);
+  }, [doc.bytes, page, scale, eraseKey]);
 
   const w = page.width * scale;
   const h = page.height * scale;
@@ -239,84 +250,111 @@ export function PageCanvas({
         >
           <canvas ref={canvasRef} className="block" style={{ width: w, height: h }} />
 
-          {/* original text lines */}
+          {/* replacement text for edited lines (original pixels are erased on the canvas) */}
           {blocks.map((b) => {
-            const top = (page.height - b.baseline - b.size * 0.82) * scale;
-            const changed = b.edited || b.deleted;
-            const selected = selectedId === b.id;
-            const family = b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"];
+            if (!(b.edited && !b.deleted) || editingId === b.id) return null;
+            const g = blockGeom(b, page, scale);
             return (
-              <div
+              <span
                 key={b.id}
-                className={cn(
-                  "group absolute origin-top-left",
-                  tool === "select" && b.editable && "cursor-text hover:ring-1 hover:ring-primary/50",
-                  tool === "select" && !b.editable && "cursor-not-allowed hover:ring-1 hover:ring-destructive/40",
-                  selected && "ring-1 ring-primary",
-                )}
+                className="pointer-events-none absolute whitespace-pre"
                 style={{
-                  left: b.x * scale - 1,
-                  top,
-                  minWidth: Math.max(b.width, 6) * scale + 4,
-                  height: b.size * 1.16 * scale,
-                  background: changed ? "#fff" : "transparent",
+                  left: g.left,
+                  top: g.baselineY - b.size * scale,
+                  lineHeight: `${b.size * scale}px`,
+                  height: b.size * 1.3 * scale,
+                  fontSize: b.size * scale,
+                  fontFamily: b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"],
+                  fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
+                  fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                  letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
+                  color: b.color,
                   transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
-                  transformOrigin: "left bottom",
-                }}
-                onPointerDown={(e) => {
-                  if (tool !== "select") return;
-                  e.stopPropagation();
-                  e.preventDefault();
-                  onSelect(b.id, "block");
-                  if (b.editable) setEditingId(b.id);
+                  transformOrigin: `0 ${b.size * scale}px`,
                 }}
               >
-                {changed && !b.deleted && (
-                  <span
-                    className="pointer-events-none absolute left-[1px] whitespace-pre"
-                    style={{
-                      top: 0,
-                      lineHeight: `${b.size * 1.16 * scale}px`,
-                      fontSize: b.size * scale,
-                      fontFamily: family,
-                      fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
-                      fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
-                      letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
-                      color: b.color,
-                    }}
-                  >
-                    {b.text}
-                  </span>
-                )}
-                {editingId === b.id && b.editable && (
-                  <input
-                    autoFocus
-                    defaultValue={b.text}
-                    onBlur={(e) => {
-                      setEditingId(null);
-                      if (e.target.value !== b.text)
-                        api.patchBlock(b.id, { text: e.target.value, edited: true });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                    className="absolute inset-0 w-full bg-white px-[1px] text-foreground outline-none ring-2 ring-primary"
-                    style={{
-                      fontSize: b.size * scale,
-                      fontFamily: family,
-                      fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
-                      fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
-                      color: b.color,
-                    }}
-                  />
-                )}
-                {!b.editable && tool === "select" && (
-                  <Lock className="absolute -left-4 top-1/2 hidden h-3 w-3 -translate-y-1/2 text-destructive group-hover:block" />
-                )}
-              </div>
+                {b.text}
+              </span>
             );
           })}
+
+          {/* SVG selection layer: outlines only, never draws text */}
+          <svg className="pointer-events-none absolute left-0 top-0" width={w} height={h}>
+            {blocks.map((b) => {
+              if (editingId === b.id) return null;
+              const g = blockGeom(b, page, scale);
+              const selected = selectedId === b.id;
+              return (
+                <rect
+                  key={b.id}
+                  x={g.left - 1}
+                  y={g.baselineY - b.size * 0.9 * scale}
+                  width={Math.max(b.width, 6) * scale + 2}
+                  height={b.size * 1.16 * scale}
+                  transform={b.angle ? `rotate(${-b.angle} ${g.left} ${g.baselineY})` : undefined}
+                  className={cn(
+                    tool === "select" ? "pointer-events-auto" : "pointer-events-none",
+                    "fill-transparent stroke-transparent transition-colors",
+                    tool === "select" && b.editable && "cursor-text hover:fill-primary/10 hover:stroke-primary/70",
+                    tool === "select" && !b.editable && "cursor-not-allowed hover:stroke-destructive/60",
+                    selected && "stroke-primary",
+                  )}
+                  strokeWidth={1}
+                  strokeDasharray={selected ? undefined : "3 2"}
+                  onPointerDown={(e) => {
+                    if (tool !== "select") return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onSelect(b.id, "block");
+                    if (b.editable) setEditingId(b.id);
+                  }}
+                >
+                  {!b.editable && <title>Font not available — locked</title>}
+                </rect>
+              );
+            })}
+          </svg>
+
+          {/* single active input */}
+          {(() => {
+            const b = blocks.find((x) => x.id === editingId);
+            if (!b || !b.editable) return null;
+            const g = blockGeom(b, page, scale);
+            const family = b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"];
+            return (
+              <input
+                key={b.id}
+                autoFocus
+                defaultValue={b.text}
+                onBlur={(e) => {
+                  setEditingId(null);
+                  if (e.target.value !== b.text)
+                    api.patchBlock(b.id, { text: e.target.value, edited: true });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") setEditingId(null);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="absolute bg-transparent p-0 outline-none ring-1 ring-primary"
+                style={{
+                  left: g.left,
+                  top: g.baselineY - b.size * scale,
+                  width: Math.max(b.width * scale + 40, 60),
+                  height: b.size * 1.3 * scale,
+                  lineHeight: `${b.size * scale}px`,
+                  fontSize: b.size * scale,
+                  fontFamily: family,
+                  fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
+                  fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
+                  letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
+                  color: b.color,
+                  transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
+                  transformOrigin: `0 ${b.size * scale}px`,
+                }}
+              />
+            );
+          })()}
 
           {/* added objects */}
           {annotations.map((a) => (
