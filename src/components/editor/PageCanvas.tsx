@@ -528,3 +528,63 @@ function AnnotationView({
     </div>
   );
 }
+
+type Block = DocState["blocks"][number];
+
+/** Screen geometry of a block, using viewport coords (CropBox-aware) when available. */
+function blockGeom(b: Block, page: PageState, scale: number) {
+  const vx = b.viewX ?? b.x;
+  const vy = b.topBaseline ?? page.height - b.baseline;
+  return { left: vx * scale, baselineY: vy * scale };
+}
+
+/** Pick the dominant colour of a strip of pixels just outside the text box. */
+function sampleBackground(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  const counts = new Map<string, number>();
+  const probe = (px: number, py: number) => {
+    if (px < 0 || py < 0 || px >= cw || py >= ch) return;
+    const d = ctx.getImageData(Math.floor(px), Math.floor(py), 1, 1).data;
+    const key = `${d[0]! >> 3},${d[1]! >> 3},${d[2]! >> 3}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  };
+  for (let i = 0; i <= 12; i++) {
+    const px = x + (w * i) / 12;
+    probe(px, y - 2);
+    probe(px, y + h + 2);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const py = y + (h * i) / 4;
+    probe(x - 3, py);
+    probe(x + w + 3, py);
+  }
+  let best = "31,31,31";
+  let n = -1;
+  for (const [k, v] of counts) if (v > n) ((best = k), (n = v));
+  const [r, g, bl] = best.split(",").map((c) => (Number(c) << 3) + 4);
+  return `rgb(${r},${g},${bl})`;
+}
+
+/** Physically remove original glyph pixels so edited text never ghosts. */
+function eraseCanvasBlocks(canvas: HTMLCanvasElement, list: Block[], page: PageState, scale: number) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx || !list.length) return;
+  const k = canvas.width / (page.width * scale); // device pixel ratio of the backing store
+  for (const b of list) {
+    const g = blockGeom(b, page, scale);
+    const bx = g.left * k;
+    const by = g.baselineY * k;
+    const pad = b.size * 0.16 * scale * k;
+    const width = Math.max(b.width, 1) * scale * k + pad * 2;
+    const top = b.size * 0.95 * scale * k;
+    const height = b.size * 1.25 * scale * k;
+    ctx.save();
+    ctx.translate(bx, by);
+    if (b.angle) ctx.rotate((-b.angle * Math.PI) / 180);
+    if (!b.angle) ctx.fillStyle = sampleBackground(ctx, bx - pad, by - top, width, height);
+    else ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-pad, -top, width, height);
+    ctx.restore();
+  }
+}
