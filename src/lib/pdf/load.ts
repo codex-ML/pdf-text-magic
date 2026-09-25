@@ -252,6 +252,21 @@ export async function loadDocument(file: File): Promise<DocState> {
   };
 }
 
+// Parse each file once and reuse it for every page render.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const docCache = new WeakMap<Uint8Array, Promise<any>>();
+async function getCachedDoc(bytes: Uint8Array) {
+  let p = docCache.get(bytes);
+  if (!p) {
+    const lib = await getPdfjs();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const created: Promise<any> = lib.getDocument({ data: bytes.slice() }).promise;
+    docCache.set(bytes, created);
+    p = created;
+  }
+  return p!;
+}
+
 /** Render one page of the source document to a canvas at the given scale. */
 export async function renderPageToCanvas(
   bytes: Uint8Array,
@@ -260,25 +275,25 @@ export async function renderPageToCanvas(
   canvas: HTMLCanvasElement,
   rotation: number,
 ) {
-  const lib = await getPdfjs();
-  const doc = await lib.getDocument({ data: bytes.slice() }).promise;
+  const doc = await getCachedDoc(bytes);
   const page = await doc.getPage(sourceIndex + 1);
   const viewport = page.getViewport({ scale, rotation });
-  canvas.width = Math.floor(viewport.width);
-  canvas.height = Math.floor(viewport.height);
-  const ctx = canvas.getContext("2d")!;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const holder = canvas as any;
   holder.__pdfTask?.cancel?.();
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   const task = page.render({ canvasContext: ctx, viewport });
   holder.__pdfTask = task;
   try {
     await task.promise;
+    return true;
   } catch (err) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((err as any)?.name !== "RenderingCancelledException") throw err;
+    return false;
   } finally {
     if (holder.__pdfTask === task) holder.__pdfTask = null;
-    await doc.destroy?.();
   }
 }
