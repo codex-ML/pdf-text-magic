@@ -57,19 +57,39 @@ export function PageCanvas({
   const eraseRef = useRef(eraseList);
   eraseRef.current = eraseList;
 
+  // Clean snapshot of the rendered page, so erasing never needs a full re-render.
+  const snapRef = useRef<HTMLCanvasElement | null>(null);
+  const [renderTick, setRenderTick] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     const canvas = canvasRef.current;
     if (!canvas) return;
     renderPageToCanvas(doc.bytes, page.sourceIndex, scale, canvas, 0)
-      .then(() => {
-        if (!cancelled) eraseCanvasBlocks(canvas, eraseRef.current, page, scale);
+      .then((ok) => {
+        if (cancelled || !ok) return;
+        const snap = document.createElement("canvas");
+        snap.width = canvas.width;
+        snap.height = canvas.height;
+        snap.getContext("2d")!.drawImage(canvas, 0, 0);
+        snapRef.current = snap;
+        setRenderTick((n) => n + 1);
       })
       .catch((e) => console.error("render failed", e));
     return () => {
       cancelled = true;
     };
-  }, [doc.bytes, page, scale, eraseKey]);
+  }, [doc.bytes, page.sourceIndex, scale]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const snap = snapRef.current;
+    if (!canvas || !snap || snap.width !== canvas.width) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(snap, 0, 0);
+    eraseCanvasBlocks(canvas, snap, eraseRef.current, page, scale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderTick, eraseKey]);
 
   const w = page.width * scale;
   const h = page.height * scale;
