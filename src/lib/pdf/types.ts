@@ -35,6 +35,9 @@ export interface TextBlock {
   /** PDF user-space coords of the line start, origin bottom-left. */
   x: number;
   baseline: number;
+  /** Viewport coords (origin top-left, scale 1) of the line start, honouring CropBox offsets. */
+  viewX?: number;
+  topBaseline?: number;
   width: number;
   size: number;
   /** Baseline angle in degrees, counter-clockwise (0 = normal horizontal text). */
