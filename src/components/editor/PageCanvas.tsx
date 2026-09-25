@@ -289,6 +289,7 @@ export function PageCanvas({
                   fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
                   letterSpacing: `${fitSpacing(b, b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"], b.fontKey && isBold(b.fontKey) ? 700 : 400, Boolean(b.fontKey && isItalic(b.fontKey)), scale)}px`,
                   color: b.color,
+                  fontSynthesis: b.fontRef ? "none" : undefined,
                   transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
                   transformOrigin: `0 ${b.size * scale}px`,
                 }}
@@ -369,6 +370,7 @@ export function PageCanvas({
                   fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
                   letterSpacing: `${fitSpacing(b, b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"], b.fontKey && isBold(b.fontKey) ? 700 : 400, Boolean(b.fontKey && isItalic(b.fontKey)), scale)}px`,
                   color: b.color,
+                  fontSynthesis: b.fontRef ? "none" : undefined,
                   transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
                   transformOrigin: `0 ${b.size * scale}px`,
                 }}

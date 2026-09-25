@@ -262,7 +262,7 @@ async function getCachedDoc(bytes: Uint8Array) {
     p = lib.getDocument({ data: bytes.slice() }).promise;
     docCache.set(bytes, p);
   }
-  return p;
+  return p!;
 }
 
 /** Render one page of the source document to a canvas at the given scale. */
