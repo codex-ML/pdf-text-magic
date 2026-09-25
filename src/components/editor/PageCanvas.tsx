@@ -287,7 +287,7 @@ export function PageCanvas({
                   fontFamily: b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"],
                   fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                   fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
-                  letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
+                  letterSpacing: `${fitSpacing(b, b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"], b.fontKey && isBold(b.fontKey) ? 700 : 400, Boolean(b.fontKey && isItalic(b.fontKey)), scale)}px`,
                   color: b.color,
                   transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
                   transformOrigin: `0 ${b.size * scale}px`,
@@ -367,7 +367,7 @@ export function PageCanvas({
                   fontFamily: family,
                   fontWeight: b.fontKey && isBold(b.fontKey) ? 700 : 400,
                   fontStyle: b.fontKey && isItalic(b.fontKey) ? "italic" : "normal",
-                  letterSpacing: b.charSpacing ? `${b.charSpacing * scale}px` : undefined,
+                  letterSpacing: `${fitSpacing(b, b.cssFont || cssFontFor[b.fontKey ?? "Helvetica"], b.fontKey && isBold(b.fontKey) ? 700 : 400, Boolean(b.fontKey && isItalic(b.fontKey)), scale)}px`,
                   color: b.color,
                   transform: b.angle ? `rotate(${-b.angle}deg)` : undefined,
                   transformOrigin: `0 ${b.size * scale}px`,
@@ -558,53 +558,81 @@ function blockGeom(b: Block, page: PageState, scale: number) {
   return { left: vx * scale, baselineY: vy * scale };
 }
 
-/** Pick the dominant colour of a strip of pixels just outside the text box. */
-function sampleBackground(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  const counts = new Map<string, number>();
-  const probe = (px: number, py: number) => {
-    if (px < 0 || py < 0 || px >= cw || py >= ch) return;
-    const d = ctx.getImageData(Math.floor(px), Math.floor(py), 1, 1).data;
-    const key = `${d[0]! >> 3},${d[1]! >> 3},${d[2]! >> 3}`;
+/** Dominant colour of the border just outside the text box, read from the clean snapshot. */
+function sampleBackground(snap: HTMLCanvasElement, x: number, y: number, w: number, h: number) {
+  const sx = Math.max(0, Math.floor(x - 3));
+  const sy = Math.max(0, Math.floor(y - 3));
+  const sw = Math.min(snap.width - sx, Math.ceil(w + 6));
+  const sh = Math.min(snap.height - sy, Math.ceil(h + 6));
+  if (sw <= 0 || sh <= 0) return "#ffffff";
+  const d = snap.getContext("2d", { willReadFrequently: true })!.getImageData(sx, sy, sw, sh).data;
+  const counts = new Map<number, number>();
+  const add = (px: number, py: number) => {
+    const o = (py * sw + px) * 4;
+    const key = ((d[o]! >> 3) << 10) | ((d[o + 1]! >> 3) << 5) | (d[o + 2]! >> 3);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   };
-  for (let i = 0; i <= 12; i++) {
-    const px = x + (w * i) / 12;
-    probe(px, y - 2);
-    probe(px, y + h + 2);
+  const stepX = Math.max(1, Math.floor(sw / 24));
+  for (let px = 0; px < sw; px += stepX) {
+    add(px, 0);
+    add(px, sh - 1);
   }
-  for (let i = 0; i <= 4; i++) {
-    const py = y + (h * i) / 4;
-    probe(x - 3, py);
-    probe(x + w + 3, py);
+  for (let py = 0; py < sh; py += 2) {
+    add(0, py);
+    add(sw - 1, py);
   }
-  let best = "31,31,31";
+  let best = 0x7fff;
   let n = -1;
   for (const [k, v] of counts) if (v > n) ((best = k), (n = v));
-  const [r, g, bl] = best.split(",").map((c) => (Number(c) << 3) + 4);
-  return `rgb(${r},${g},${bl})`;
+  const r = ((best >> 10) & 31) * 8 + 4;
+  const g = ((best >> 5) & 31) * 8 + 4;
+  const b = (best & 31) * 8 + 4;
+  return `rgb(${Math.min(255, r)},${Math.min(255, g)},${Math.min(255, b)})`;
 }
 
 /** Physically remove original glyph pixels so edited text never ghosts. */
-function eraseCanvasBlocks(canvas: HTMLCanvasElement, list: Block[], page: PageState, scale: number) {
+function eraseCanvasBlocks(
+  canvas: HTMLCanvasElement,
+  snap: HTMLCanvasElement,
+  list: Block[],
+  page: PageState,
+  scale: number,
+) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx || !list.length) return;
-  const k = canvas.width / (page.width * scale); // device pixel ratio of the backing store
+  const k = canvas.width / (page.width * scale);
   for (const b of list) {
     const g = blockGeom(b, page, scale);
     const bx = g.left * k;
     const by = g.baselineY * k;
-    const pad = b.size * 0.16 * scale * k;
+    const pad = b.size * 0.12 * scale * k;
     const width = Math.max(b.width, 1) * scale * k + pad * 2;
     const top = b.size * 0.95 * scale * k;
     const height = b.size * 1.25 * scale * k;
     ctx.save();
     ctx.translate(bx, by);
     if (b.angle) ctx.rotate((-b.angle * Math.PI) / 180);
-    if (!b.angle) ctx.fillStyle = sampleBackground(ctx, bx - pad, by - top, width, height);
-    else ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = b.angle ? "#ffffff" : sampleBackground(snap, bx - pad, by - top, width, height);
     ctx.fillRect(-pad, -top, width, height);
     ctx.restore();
   }
+}
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+/**
+ * Letter spacing that makes the replacement text as dense as the original line,
+ * so a changed word keeps the same visual size and rhythm as the rest of the page.
+ */
+function fitSpacing(b: Block, family: string, weight: number, italic: boolean, scale: number) {
+  if (typeof document === "undefined" || !b.text) return 0;
+  measureCtx ??= document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return 0;
+  const px = b.size * scale;
+  measureCtx.font = `${italic ? "italic " : ""}${weight} ${px}px ${family}`;
+  const origMeasured = measureCtx.measureText(b.original).width;
+  const target = b.width * scale;
+  if (origMeasured <= 0 || target <= 0) return 0;
+  // Spacing the original line needed on top of this font's natural advance.
+  const perChar = (target - origMeasured) / Math.max(1, b.original.length);
+  return Math.max(-px * 0.1, Math.min(px * 0.3, perChar));
 }
